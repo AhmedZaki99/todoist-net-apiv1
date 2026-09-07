@@ -16,7 +16,7 @@ public class WorkspacesServiceTests
     public async Task CreateWorkspace_Update_GetPlanDetails_Delete_Succeeds()
     {
         // Make sure we are not reaching max workspace limit.
-        await _apiFixture.DeletePlaygroundWorkspaceAsync();
+        await _apiFixture.DeletePlaygroundWorkspaceAsync(throwWhenFailed: true);
 
 
         // Step 1: Create workspace.
@@ -85,7 +85,7 @@ public class WorkspacesServiceTests
     {
         // Step 1: Create workspace folder
         var workspace = await _apiFixture.GetPlaygroundWorkspaceAsync();
-        var folder = new WorkspaceFolder("Test Folder", 3);
+        var folder = new WorkspaceFolder("Test Folder", "a5");
 
         var syncResponse = await _apiFixture.Client.ExecuteTransactionAndSyncAsync(
             t => t.Workspaces.AddFolderAsync(workspace.Id, folder, _cancellationToken),
@@ -94,14 +94,14 @@ public class WorkspacesServiceTests
         // Track the created entity for cleanup if assertions fail before deletion step, otherwise stop tracking after deletion step.
         await using var tracker = _apiFixture.TrackForCleanup(folder, c =>
         {
-            return (id, ct) => c.Workspaces.DeleteFolderAsync(workspace.Id, id, ct);
+            return (id, ct) => c.Workspaces.DeleteFolderAsync(id, workspace.Id, ct);
         });
 
         Assert.All(syncResponse.SyncStatus.Values, cr => cr.AssertSuccess());
         var actualFolder = Assert.Single(syncResponse.WorkspaceFolders, f => f.Id == folder.Id);
         Assert.Equal(folder.WorkspaceId, actualFolder.WorkspaceId);
         Assert.Equal(folder.Name, actualFolder.Name);
-        Assert.Equal(folder.DefaultOrder, actualFolder.DefaultOrder);
+        Assert.Equal(folder.DefaultOrderKey, actualFolder.DefaultOrderKey);
 
 
         // Step 2: Update folder.
