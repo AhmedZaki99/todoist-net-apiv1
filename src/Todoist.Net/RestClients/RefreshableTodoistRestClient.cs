@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Flurl.Http;
 
 using Todoist.Net.Exceptions;
 using Todoist.Net.Models;
@@ -91,6 +91,7 @@ namespace Todoist.Net
                 base.DeleteAsync(resource, queryParams, cancellationToken), cancellationToken);
         }
 
+
         /// <inheritdoc/>
         public Task<HttpResponseMessage> RefreshTokensAsync(CancellationToken cancellationToken = default)
         {
@@ -110,19 +111,23 @@ namespace Todoist.Net
         }
 
         /// <inheritdoc/>
-        public async Task<HttpResponseMessage> RevokeTokensAsync(CancellationToken cancellationToken = default)
+        public Task<HttpResponseMessage> RevokeTokensAsync(CancellationToken cancellationToken = default)
         {
-            var response = await FlurlClient
-                .Request(ApiConstants.TokenRevokeEndpoint)
-                .WithBasicAuth(_authContext.Credentials.ClientId, _authContext.Credentials.ClientSecret)
-                .PostUrlEncodedAsync(new
-                {
-                    token = _authContext.Tokens.AccessToken,
-                    token_type_hint = "access_token"
-                }, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            var formParams = new Dictionary<string, string>
+            {
+                { "token", _authContext.Tokens.AccessToken },
+                { "token_type_hint", "access_token" }
+            };
+            var encodedCreds = Convert.ToBase64String(
+                Encoding.UTF8.GetBytes($"{_authContext.Credentials.ClientId}:{_authContext.Credentials.ClientSecret}"));
 
-            return response.ResponseMessage;
+            using (var request = new HttpRequestMessage(HttpMethod.Post, ApiConstants.TokenRevokeEndpoint))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Basic", encodedCreds);
+                request.Content = new FormUrlEncodedContent(formParams);
+
+                return HttpClient.SendAsync(request, cancellationToken);
+            }
         }
 
 
@@ -160,21 +165,23 @@ namespace Todoist.Net
 
         private async Task<HttpResponseMessage> RefreshTokensCoreAsync(CancellationToken cancellationToken)
         {
-            var response = await FlurlClient
-                .Request(ApiConstants.TokenRefreshEndpoint)
-                .PostUrlEncodedAsync(new
-                {
-                    client_id = _authContext.Credentials.ClientId,
-                    client_secret = _authContext.Credentials.ClientSecret,
-                    refresh_token = _authContext.Tokens.RefreshToken,
-                    grant_type = "refresh_token"
-                }, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            var formParams = new Dictionary<string, string>
+            {
+                { "client_id", _authContext.Credentials.ClientId },
+                { "client_secret", _authContext.Credentials.ClientSecret },
+                { "refresh_token", _authContext.Tokens.RefreshToken },
+                { "grant_type", "refresh_token" }
+            };
+            using (var content = new FormUrlEncodedContent(formParams))
+            {
+                var response = await HttpClient.PostAsync(ApiConstants.TokenRefreshEndpoint, content, cancellationToken)
+                    .ConfigureAwait(false);
 
-            await HandleTokenRefreshResponseAsync(response.ResponseMessage, cancellationToken)
-                .ConfigureAwait(false);
+                await HandleTokenRefreshResponseAsync(response, cancellationToken)
+                    .ConfigureAwait(false);
 
-            return response.ResponseMessage;
+                return response;
+            }
         }
 
         private async Task<bool> HandleTokenRefreshResponseAsync(HttpResponseMessage refreshResponse, CancellationToken cancellationToken)

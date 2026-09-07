@@ -1,13 +1,12 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Flurl;
-using Flurl.Http;
-using Flurl.Http.Content;
 
 using Todoist.Net.Exceptions;
 using Todoist.Net.Extensions;
@@ -17,8 +16,11 @@ namespace Todoist.Net
 {
     internal class TodoistRestClient : ITodoistRestClient
     {
+        private static readonly Lazy<HttpClient> _defaultClient = new Lazy<HttpClient>(() => CreateClient());
+        private static readonly ConcurrentDictionary<IWebProxy, HttpClient> _proxiedClients = new ConcurrentDictionary<IWebProxy, HttpClient>();
+
         protected string AccessToken { get; set; }
-        protected IFlurlClient FlurlClient { get; }
+        protected HttpClient HttpClient { get; }
 
         public TodoistRestClient(string token) : this(token, (IWebProxy)null)
         { }
@@ -27,21 +29,12 @@ namespace Todoist.Net
         {
             ThrowHelper.ThrowIfNullOrEmpty(token, nameof(token));
 
-            AccessToken = token;
-
             // We use long-lived HttpClient instances in cases where IHttpClientFactory is not available (e.g., in .NET Framework).
             // This is to avoid socket exhaustion issues.
-            FlurlClient = FlurlHttp.Clients.GetOrAdd(
-                name: ApiConstants.FlurlClientName + proxy?.GetHashCode(),
-                baseUrl: ApiConstants.ApiBaseUrl,
-                configure: builder => builder
-                    .ConfigureInnerHandler(handler =>
-                    {
-                        handler.Proxy = proxy;
-                        handler.UseProxy = proxy != null;
-                    })
-                    .AllowAnyHttpStatus()
-                    .OnError(HandleFlurlError));
+            AccessToken = token;
+            HttpClient = proxy == null
+                ? _defaultClient.Value
+                : _proxiedClients.GetOrAdd(proxy, CreateClient);
         }
 
         public TodoistRestClient(string token, HttpClient httpClient)
@@ -49,13 +42,11 @@ namespace Todoist.Net
             ThrowHelper.ThrowIfNullOrEmpty(token, nameof(token));
             ThrowHelper.ThrowIfNull(httpClient, nameof(httpClient));
 
+            // We use the provided short-lived HttpClient instance here because it has its own lifetime management.
             AccessToken = token;
+            HttpClient = httpClient;
 
-            // We use a short-lived FlurlClient instance here because the HttpClient is provided externally and may have its own lifetime management.
-            // This avoids potential issues with reusing a FlurlClient that wraps an externally managed HttpClient.
-            FlurlClient = new FlurlClient(httpClient, ApiConstants.ApiBaseUrl)
-                .AllowAnyHttpStatus()
-                .OnError(HandleFlurlError);
+            HttpClient.BaseAddress = new Uri(ApiConstants.ApiBaseUrl);
         }
 
 
@@ -68,111 +59,143 @@ namespace Todoist.Net
 
 
         /// <inheritdoc/>
-        public virtual async Task<HttpResponseMessage> GetAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
+        public virtual Task<HttpResponseMessage> GetAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
 
-            var response = await BuildResourceRequest(resource)
-                .SetQueryParams(queryParams)
-                .GetAsync(cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            return response.ResponseMessage;
+            using (var request = BuildResourceRequest(HttpMethod.Get, resource, queryParams))
+            {
+                return HttpClient.SendAsync(request, cancellationToken);
+            }
         }
 
         /// <inheritdoc/>
-        public virtual async Task<HttpResponseMessage> PostAsync(string resource, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
+        public virtual Task<HttpResponseMessage> PostAsync(string resource, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
 
-            var response = await BuildResourceRequest(resource)
-                .PostUrlEncodedAsync(formParams ?? new Dictionary<string, string>(), cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            using (var request = BuildResourceRequest(HttpMethod.Post, resource))
+            {
+                request.Content = new FormUrlEncodedContent(formParams ?? new Dictionary<string, string>());
 
-            return response.ResponseMessage;
+                return HttpClient.SendAsync(request, cancellationToken);
+            }
         }
 
         /// <inheritdoc/>
-        public virtual async Task<HttpResponseMessage> PostFilesAsync(string resource, UploadFile[] files, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
+        public virtual Task<HttpResponseMessage> PostFilesAsync(string resource, UploadFile[] files, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
             ThrowHelper.ThrowIfNull(files, nameof(files));
 
-            var response = await BuildResourceRequest(resource)
-                .PostMultipartAsync(mp => mp
-                    .AddStringParts(formParams ?? new Dictionary<string, string>())
-                    .AddFileParts("file", files), cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            return response.ResponseMessage;
-        }
-
-        /// <inheritdoc/>
-        public virtual async Task<HttpResponseMessage> PostJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
-        {
-            ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
-            ThrowHelper.ThrowIfNullOrEmpty(jsonContent, nameof(jsonContent));
-
-            var response = await BuildResourceRequest(resource)
-                .PostAsync(new CapturedJsonContent(jsonContent), cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            return response.ResponseMessage;
-        }
-
-        /// <inheritdoc/>
-        public virtual async Task<HttpResponseMessage> PutAsync(string resource, CancellationToken cancellationToken = default)
-        {
-            ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
-
-            var response = await BuildResourceRequest(resource)
-                .PutAsync(cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            return response.ResponseMessage;
-        }
-
-        /// <inheritdoc/>
-        public virtual async Task<HttpResponseMessage> PutJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
-        {
-            ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
-            ThrowHelper.ThrowIfNullOrEmpty(jsonContent, nameof(jsonContent));
-
-            var response = await BuildResourceRequest(resource)
-                .PutAsync(new CapturedJsonContent(jsonContent), cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            return response.ResponseMessage;
-        }
-
-        /// <inheritdoc/>
-        public virtual async Task<HttpResponseMessage> DeleteAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
-        {
-            ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
-
-            var response = await BuildResourceRequest(resource)
-                .SetQueryParams(queryParams)
-                .DeleteAsync(cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            return response.ResponseMessage;
-        }
-
-
-        protected virtual void HandleFlurlError(FlurlCall call)
-        {
-            if (call.Exception is HttpRequestException)
+            using (var request = BuildResourceRequest(HttpMethod.Post, resource))
             {
-                // Users of this library expect to receive HttpRequestException when the request fails, not FlurlHttpException.
-                throw call.Exception;
+                request.Content = new MultipartFormDataContent()
+                    .AddStringParts(formParams)
+                    .AddFileParts("file", files);
+
+                return HttpClient.SendAsync(request, cancellationToken);
             }
         }
 
-        private IFlurlRequest BuildResourceRequest(string resource)
+        /// <inheritdoc/>
+        public virtual Task<HttpResponseMessage> PostJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
         {
-            return FlurlClient
-                .Request(ApiConstants.ResourcesEndpoint, resource)
-                .WithOAuthBearerToken(AccessToken);
+            ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
+            ThrowHelper.ThrowIfNullOrEmpty(jsonContent, nameof(jsonContent));
+
+            using (var request = BuildResourceRequest(HttpMethod.Post, resource))
+            {
+                request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+                return HttpClient.SendAsync(request, cancellationToken);
+            }
+        }
+
+        /// <inheritdoc/>
+        public virtual Task<HttpResponseMessage> PutAsync(string resource, CancellationToken cancellationToken = default)
+        {
+            ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
+
+            using (var request = BuildResourceRequest(HttpMethod.Put, resource))
+            {
+                return HttpClient.SendAsync(request, cancellationToken);
+            }
+        }
+
+        /// <inheritdoc/>
+        public virtual Task<HttpResponseMessage> PutJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
+        {
+            ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
+            ThrowHelper.ThrowIfNullOrEmpty(jsonContent, nameof(jsonContent));
+
+            using (var request = BuildResourceRequest(HttpMethod.Put, resource))
+            {
+                request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+                return HttpClient.SendAsync(request, cancellationToken);
+            }
+        }
+
+        /// <inheritdoc/>
+        public virtual Task<HttpResponseMessage> DeleteAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
+        {
+            ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
+
+            using (var request = BuildResourceRequest(HttpMethod.Delete, resource, queryParams))
+            {
+                return HttpClient.SendAsync(request, cancellationToken);
+            }
+        }
+
+
+        private HttpRequestMessage BuildResourceRequest(HttpMethod method, string resource, Dictionary<string, string> queryParams = null)
+        {
+            var requestUri = $"{ApiConstants.ResourcesEndpoint}/{resource}{BuildQuerySegment(queryParams)}";
+
+            var request = new HttpRequestMessage(method, requestUri);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AccessToken);
+
+            return request;
+        }
+
+        private static string BuildQuerySegment(Dictionary<string, string> queryParams)
+        {
+            string encode(string data) => string.IsNullOrEmpty(data)
+                ? string.Empty
+                : Uri.EscapeDataString(data).Replace("%20", "+");
+
+            if (queryParams == null || queryParams.Count == 0)
+            {
+                return string.Empty;
+            }
+            var builder = new StringBuilder();
+
+            foreach (var pair in queryParams)
+            {
+                if (builder.Length > 0)
+                {
+                    builder.Append('&');
+                }
+                builder.Append(encode(pair.Key));
+                builder.Append('=');
+                builder.Append(encode(pair.Value));
+            }
+            return "?" + builder.ToString();
+        }
+
+        private static HttpClient CreateClient(IWebProxy proxy = null)
+        {
+            var handler = new HttpClientHandler();
+            if (proxy != null)
+            {
+                handler.Proxy = proxy;
+                handler.UseProxy = true;
+            }
+            return new HttpClient(handler)
+            {
+                BaseAddress = new Uri(ApiConstants.ApiBaseUrl)
+            };
         }
     }
 }
