@@ -61,7 +61,7 @@ namespace Todoist.Net
         public override Task<HttpResponseMessage> PostFilesAsync(string resource, UploadFile[] files, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
         {
             // If any of the files cannot seek, we cannot retry the request after refreshing the token, because the file streams would be at the end.
-            bool canRetry = files.All(f => f.ContentStream.CanSeek);
+            bool canRetry = files?.All(f => f.ContentStream.CanSeek) ?? true;
 
             return ExecuteWithTokenRefreshAsync(() =>
                 base.PostFilesAsync(resource, files, formParams, cancellationToken), canRetry, cancellationToken: cancellationToken);
@@ -101,27 +101,29 @@ namespace Todoist.Net
         {
             lock (_refreshLock)
             {
-                if (_activeRefreshTask == null)
+                if (_activeRefreshTask != null)
                 {
-                    var refreshTask = RefreshTokensCoreAsync(cancellationToken);
-                    _activeRefreshTask = refreshTask;
-
-                    refreshTask.ContinueWith(
-                        _ =>
-                        {
-                            lock (_refreshLock)
-                            {
-                                if (ReferenceEquals(_activeRefreshTask, refreshTask))
-                                {
-                                    _activeRefreshTask = null;
-                                }
-                            }
-                        },
-                        CancellationToken.None,
-                        TaskContinuationOptions.ExecuteSynchronously,
-                        TaskScheduler.Default);
+                    return _activeRefreshTask;
                 }
-                return _activeRefreshTask;
+                var refreshTask = RefreshTokensCoreAsync(cancellationToken);
+                _activeRefreshTask = refreshTask;
+
+                refreshTask.ContinueWith(
+                    _ =>
+                    {
+                        lock (_refreshLock)
+                        {
+                            if (ReferenceEquals(_activeRefreshTask, refreshTask))
+                            {
+                                _activeRefreshTask = null;
+                            }
+                        }
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+
+                return refreshTask;
             }
         }
 
