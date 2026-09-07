@@ -111,7 +111,7 @@ namespace Todoist.Net
         }
 
         /// <inheritdoc/>
-        public Task<HttpResponseMessage> RevokeTokensAsync(CancellationToken cancellationToken = default)
+        public async Task<HttpResponseMessage> RevokeTokensAsync(CancellationToken cancellationToken = default)
         {
             var formParams = new Dictionary<string, string>
             {
@@ -126,7 +126,8 @@ namespace Todoist.Net
                 request.Headers.Authorization = new AuthenticationHeaderValue("Basic", encodedCreds);
                 request.Content = new FormUrlEncodedContent(formParams);
 
-                return HttpClient.SendAsync(request, cancellationToken);
+                return await HttpClient.SendAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 

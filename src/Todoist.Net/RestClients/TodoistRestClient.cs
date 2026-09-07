@@ -59,18 +59,19 @@ namespace Todoist.Net
 
 
         /// <inheritdoc/>
-        public virtual Task<HttpResponseMessage> GetAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
+        public async virtual Task<HttpResponseMessage> GetAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
 
             using (var request = BuildResourceRequest(HttpMethod.Get, resource, queryParams))
             {
-                return HttpClient.SendAsync(request, cancellationToken);
+                return await HttpClient.SendAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
         /// <inheritdoc/>
-        public virtual Task<HttpResponseMessage> PostAsync(string resource, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
+        public async virtual Task<HttpResponseMessage> PostAsync(string resource, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
 
@@ -78,12 +79,13 @@ namespace Todoist.Net
             {
                 request.Content = new FormUrlEncodedContent(formParams ?? new Dictionary<string, string>());
 
-                return HttpClient.SendAsync(request, cancellationToken);
+                return await HttpClient.SendAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
         /// <inheritdoc/>
-        public virtual Task<HttpResponseMessage> PostFilesAsync(string resource, UploadFile[] files, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
+        public async virtual Task<HttpResponseMessage> PostFilesAsync(string resource, UploadFile[] files, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
             ThrowHelper.ThrowIfNull(files, nameof(files));
@@ -94,12 +96,13 @@ namespace Todoist.Net
                     .AddStringParts(formParams)
                     .AddFileParts("file", files);
 
-                return HttpClient.SendAsync(request, cancellationToken);
+                return await HttpClient.SendAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
         /// <inheritdoc/>
-        public virtual Task<HttpResponseMessage> PostJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
+        public async virtual Task<HttpResponseMessage> PostJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
             ThrowHelper.ThrowIfNullOrEmpty(jsonContent, nameof(jsonContent));
@@ -108,23 +111,25 @@ namespace Todoist.Net
             {
                 request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                return HttpClient.SendAsync(request, cancellationToken);
+                return await HttpClient.SendAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
         /// <inheritdoc/>
-        public virtual Task<HttpResponseMessage> PutAsync(string resource, CancellationToken cancellationToken = default)
+        public async virtual Task<HttpResponseMessage> PutAsync(string resource, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
 
             using (var request = BuildResourceRequest(HttpMethod.Put, resource))
             {
-                return HttpClient.SendAsync(request, cancellationToken);
+                return await HttpClient.SendAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
         /// <inheritdoc/>
-        public virtual Task<HttpResponseMessage> PutJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
+        public async virtual Task<HttpResponseMessage> PutJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
             ThrowHelper.ThrowIfNullOrEmpty(jsonContent, nameof(jsonContent));
@@ -133,18 +138,20 @@ namespace Todoist.Net
             {
                 request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                return HttpClient.SendAsync(request, cancellationToken);
+                return await HttpClient.SendAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
         /// <inheritdoc/>
-        public virtual Task<HttpResponseMessage> DeleteAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
+        public async virtual Task<HttpResponseMessage> DeleteAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
 
             using (var request = BuildResourceRequest(HttpMethod.Delete, resource, queryParams))
             {
-                return HttpClient.SendAsync(request, cancellationToken);
+                return await HttpClient.SendAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
