@@ -1,5 +1,7 @@
 using System.Threading.Tasks;
 
+using Todoist.Net.Exceptions;
+
 namespace Todoist.Net
 {
     /// <summary>
@@ -45,6 +47,9 @@ namespace Todoist.Net
         /// <param name="refreshState">A state object to pass to the refresh handler.</param>
         public TodoistAuthenticationContext(ClientCredentials credentials, TodoistTokens tokens, TokenRefreshHandler onRefresh, object refreshState)
         {
+            ThrowHelper.ThrowIfNull(credentials, nameof(credentials));
+            ThrowHelper.ThrowIfNull(tokens, nameof(tokens));
+
             Credentials = credentials;
             Tokens = tokens;
 

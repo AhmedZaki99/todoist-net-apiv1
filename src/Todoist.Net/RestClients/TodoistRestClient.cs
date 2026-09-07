@@ -25,6 +25,8 @@ namespace Todoist.Net
 
         public TodoistRestClient(string token, IWebProxy proxy)
         {
+            ThrowHelper.ThrowIfNullOrEmpty(token, nameof(token));
+
             AccessToken = token;
 
             // We use long-lived HttpClient instances in cases where IHttpClientFactory is not available (e.g., in .NET Framework).
@@ -44,6 +46,9 @@ namespace Todoist.Net
 
         public TodoistRestClient(string token, HttpClient httpClient)
         {
+            ThrowHelper.ThrowIfNullOrEmpty(token, nameof(token));
+            ThrowHelper.ThrowIfNull(httpClient, nameof(httpClient));
+
             AccessToken = token;
 
             // We use a short-lived FlurlClient instance here because the HttpClient is provided externally and may have its own lifetime management.

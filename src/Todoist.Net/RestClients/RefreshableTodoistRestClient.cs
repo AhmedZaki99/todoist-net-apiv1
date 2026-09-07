@@ -8,26 +8,36 @@ using System.Threading.Tasks;
 
 using Flurl.Http;
 
+using Todoist.Net.Exceptions;
 using Todoist.Net.Models;
 
 namespace Todoist.Net
 {
     internal class RefreshableTodoistRestClient : TodoistRestClient, IRefreshableTodoistRestClient
     {
+        private Task<HttpResponseMessage> _activeRefreshTask = null;
+        private readonly object _refreshLock = new object();
+
         private readonly TodoistAuthenticationContext _authContext;
 
-        public RefreshableTodoistRestClient(TodoistAuthenticationContext authContext) : base(authContext.Tokens.AccessToken)
+        public RefreshableTodoistRestClient(TodoistAuthenticationContext authContext) : base(authContext?.Tokens?.AccessToken)
         {
+            ThrowHelper.ThrowIfNull(authContext, nameof(authContext));
+
             _authContext = authContext;
         }
 
-        public RefreshableTodoistRestClient(TodoistAuthenticationContext authContext, IWebProxy proxy) : base(authContext.Tokens.AccessToken, proxy)
+        public RefreshableTodoistRestClient(TodoistAuthenticationContext authContext, IWebProxy proxy) : base(authContext?.Tokens?.AccessToken, proxy)
         {
+            ThrowHelper.ThrowIfNull(authContext, nameof(authContext));
+
             _authContext = authContext;
         }
 
-        public RefreshableTodoistRestClient(TodoistAuthenticationContext authContext, HttpClient httpClient) : base(authContext.Tokens.AccessToken, httpClient)
+        public RefreshableTodoistRestClient(TodoistAuthenticationContext authContext, HttpClient httpClient) : base(authContext?.Tokens?.AccessToken, httpClient)
         {
+            ThrowHelper.ThrowIfNull(authContext, nameof(authContext));
+
             _authContext = authContext;
         }
 
@@ -81,37 +91,22 @@ namespace Todoist.Net
                 base.DeleteAsync(resource, queryParams, cancellationToken), cancellationToken);
         }
 
-
         /// <inheritdoc/>
-        public async Task<HttpResponseMessage> RefreshTokensAsync(CancellationToken cancellationToken = default)
+        public Task<HttpResponseMessage> RefreshTokensAsync(CancellationToken cancellationToken = default)
         {
-            var response = await FlurlClient
-                .Request(ApiConstants.TokenRefreshEndpoint)
-                .PostUrlEncodedAsync(new
+            lock (_refreshLock)
+            {
+                if (_activeRefreshTask == null)
                 {
-                    client_id = _authContext.Credentials.ClientId,
-                    client_secret = _authContext.Credentials.ClientSecret,
-                    refresh_token = _authContext.Tokens.RefreshToken,
-                    grant_type = "refresh_token"
-                }, cancellationToken: cancellationToken);
-
-            if (!response.ResponseMessage.IsSuccessStatusCode)
-            {
-                return response.ResponseMessage;
+                    _activeRefreshTask = RefreshTokensCoreAsync(cancellationToken)
+                        .ContinueWith(t =>
+                        {
+                            _activeRefreshTask = null;
+                            return t.Result;
+                        }, cancellationToken);
+                }
+                return _activeRefreshTask;
             }
-            var jsonResponse = await GetJsonAndResetBufferAsync(response.ResponseMessage).ConfigureAwait(false);
-
-            AccessToken = jsonResponse.AccessToken;
-            _authContext.Tokens = new TodoistTokens(
-                jsonResponse.AccessToken,
-                jsonResponse.RefreshToken,
-                DateTime.UtcNow.AddSeconds(jsonResponse.ExpiresIn));
-
-            if (_authContext.OnRefresh != null)
-            {
-                await _authContext.OnRefresh(jsonResponse, _authContext.RefreshState, cancellationToken).ConfigureAwait(false);
-            }
-            return response.ResponseMessage;
         }
 
         /// <inheritdoc/>
@@ -124,7 +119,8 @@ namespace Todoist.Net
                 {
                     token = _authContext.Tokens.AccessToken,
                     token_type_hint = "access_token"
-                }, cancellationToken: cancellationToken);
+                }, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
 
             return response.ResponseMessage;
         }
@@ -134,28 +130,87 @@ namespace Todoist.Net
         {
             bool tokenFoundExpired = _authContext.Tokens.ExpirationTimeUtc <= DateTime.UtcNow.AddMinutes(1);
             bool refreshTokenExist = !string.IsNullOrEmpty(_authContext.Tokens.RefreshToken);
+
             if (tokenFoundExpired && refreshTokenExist)
             {
-                await RefreshTokensAsync(cancellationToken).ConfigureAwait(false);
+                return await RefreshAndExecuteAsync(action, cancellationToken).ConfigureAwait(false);
             }
 
             var response = await action().ConfigureAwait(false);
             if (!tokenFoundExpired && refreshTokenExist && response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                var refreshResponse = await RefreshTokensAsync(cancellationToken).ConfigureAwait(false);
-                if (refreshResponse.IsSuccessStatusCode)
-                {
-                    response = await action().ConfigureAwait(false);
-                }
+                response.Dispose();
+                return await RefreshAndExecuteAsync(action, cancellationToken).ConfigureAwait(false);
             }
             return response;
         }
 
-        private static async Task<TokenRefreshResponse> GetJsonAndResetBufferAsync(HttpResponseMessage response)
+        private async Task<HttpResponseMessage> RefreshAndExecuteAsync(Func<Task<HttpResponseMessage>> action, CancellationToken cancellationToken)
+        {
+            var refreshResponse = await RefreshTokensAsync(cancellationToken).ConfigureAwait(false);
+            if (!refreshResponse.IsSuccessStatusCode)
+            {
+                return refreshResponse;
+            }
+            refreshResponse.Dispose();
+
+            return await action().ConfigureAwait(false);
+        }
+
+
+        private async Task<HttpResponseMessage> RefreshTokensCoreAsync(CancellationToken cancellationToken)
+        {
+            var response = await FlurlClient
+                .Request(ApiConstants.TokenRefreshEndpoint)
+                .PostUrlEncodedAsync(new
+                {
+                    client_id = _authContext.Credentials.ClientId,
+                    client_secret = _authContext.Credentials.ClientSecret,
+                    refresh_token = _authContext.Tokens.RefreshToken,
+                    grant_type = "refresh_token"
+                }, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            await HandleTokenRefreshResponseAsync(response.ResponseMessage, cancellationToken)
+                .ConfigureAwait(false);
+
+            return response.ResponseMessage;
+        }
+
+        private async Task<bool> HandleTokenRefreshResponseAsync(HttpResponseMessage refreshResponse, CancellationToken cancellationToken)
+        {
+            if (!refreshResponse.IsSuccessStatusCode)
+            {
+                return false;
+            }
+            var jsonResponse = await GetJsonAndResetContentAsync<TokenRefreshResponse>(refreshResponse)
+                .ConfigureAwait(false);
+
+            var expirationTimeUtc = jsonResponse.ExpiresIn > 0
+                ? DateTime.UtcNow.AddSeconds(jsonResponse.ExpiresIn)
+                : (DateTime?)null;
+
+            AccessToken = jsonResponse.AccessToken;
+            _authContext.Tokens = new TodoistTokens(
+                jsonResponse.AccessToken,
+                jsonResponse.RefreshToken,
+                expirationTimeUtc);
+
+            if (_authContext.OnRefresh != null)
+            {
+                await _authContext.OnRefresh(jsonResponse, _authContext.RefreshState, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            return true;
+        }
+
+
+        private static async Task<T> GetJsonAndResetContentAsync<T>(HttpResponseMessage response)
         {
             using (var originalContent = response.Content)
             {
-                var responseBody = await originalContent.ReadAsByteArrayAsync().ConfigureAwait(false);
+                var responseBody = await originalContent.ReadAsByteArrayAsync()
+                    .ConfigureAwait(false);
 
                 var bufferedContent = new ByteArrayContent(responseBody);
                 foreach (var header in originalContent.Headers)
@@ -164,7 +219,7 @@ namespace Todoist.Net
                 }
 
                 response.Content = bufferedContent;
-                return JsonSerializer.Deserialize<TokenRefreshResponse>(responseBody);
+                return JsonSerializer.Deserialize<T>(responseBody);
             }
         }
     }

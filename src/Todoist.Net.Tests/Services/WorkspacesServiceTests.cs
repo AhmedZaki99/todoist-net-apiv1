@@ -28,7 +28,7 @@ public class WorkspacesServiceTests
             [ResourceType.Workspaces],
             cancellationToken: _cancellationToken);
         // Track the created entity for cleanup if assertions fail before deletion step, otherwise stop tracking after deletion step.
-        await using var tracker = _apiFixture.TrackForCleanup(newWorkspace, c => c.Workspaces.DeleteAsync, isPremium: true);
+        await using var tracker = _apiFixture.TrackForCleanup(newWorkspace, c => c.Workspaces.DeleteAsync);
 
         Assert.All(syncResponse.SyncStatus.Values, cr => cr.AssertSuccess());
         var actualWorkspace = Assert.Single(syncResponse.Workspaces, w => w.Id == newWorkspace.Id);

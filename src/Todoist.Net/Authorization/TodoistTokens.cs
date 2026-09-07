@@ -1,5 +1,7 @@
 using System;
 
+using Todoist.Net.Exceptions;
+
 namespace Todoist.Net
 {
     /// <summary>
@@ -31,6 +33,8 @@ namespace Todoist.Net
         /// <param name="expirationTimeUtc">The expiration time of the access token in UTC. This parameter is optional and may be null if the expiration time is not known.</param>
         public TodoistTokens(string accessToken, string refreshToken, DateTime? expirationTimeUtc = null)
         {
+            ThrowHelper.ThrowIfNullOrEmpty(accessToken, nameof(accessToken));
+
             AccessToken = accessToken;
             RefreshToken = refreshToken;
             ExpirationTimeUtc = expirationTimeUtc;
