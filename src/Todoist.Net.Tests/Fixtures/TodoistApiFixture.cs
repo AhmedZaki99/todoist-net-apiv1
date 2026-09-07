@@ -113,7 +113,7 @@ public sealed class TodoistApiFixture : IAsyncLifetime
         {
             if (freshInstance)
             {
-                await DeletePlaygroundProjectAsync();
+                await DeletePlaygroundProjectAsync(throwWhenFailed: true);
             }
             return _playgroundProject ??= await CreatePlaygroundProjectAsync();
         }
@@ -132,7 +132,7 @@ public sealed class TodoistApiFixture : IAsyncLifetime
         {
             if (freshInstance)
             {
-                await DeletePlaygroundWorkspaceAsync();
+                await DeletePlaygroundWorkspaceAsync(throwWhenFailed: true);
             }
             return _playgroundWorkspace ??= await CreatePlaygroundWorkspaceAsync();
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -46,49 +47,52 @@ namespace Todoist.Net
         public override Task<HttpResponseMessage> GetAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
         {
             return ExecuteWithTokenRefreshAsync(() =>
-                base.GetAsync(resource, queryParams, cancellationToken), cancellationToken);
+                base.GetAsync(resource, queryParams, cancellationToken), cancellationToken: cancellationToken);
         }
 
         /// <inheritdoc/>
         public override Task<HttpResponseMessage> PostAsync(string resource, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
         {
             return ExecuteWithTokenRefreshAsync(() =>
-                base.PostAsync(resource, formParams, cancellationToken), cancellationToken);
+                base.PostAsync(resource, formParams, cancellationToken), cancellationToken: cancellationToken);
         }
 
         /// <inheritdoc/>
         public override Task<HttpResponseMessage> PostFilesAsync(string resource, UploadFile[] files, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
         {
+            // If any of the files cannot seek, we cannot retry the request after refreshing the token, because the file streams would be at the end.
+            bool canRetry = files.All(f => f.ContentStream.CanSeek);
+
             return ExecuteWithTokenRefreshAsync(() =>
-                base.PostFilesAsync(resource, files, formParams, cancellationToken), cancellationToken);
+                base.PostFilesAsync(resource, files, formParams, cancellationToken), canRetry, cancellationToken: cancellationToken);
         }
 
         /// <inheritdoc/>
         public override Task<HttpResponseMessage> PostJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
         {
             return ExecuteWithTokenRefreshAsync(() =>
-                base.PostJsonAsync(resource, jsonContent, cancellationToken), cancellationToken);
+                base.PostJsonAsync(resource, jsonContent, cancellationToken), cancellationToken: cancellationToken);
         }
 
         /// <inheritdoc/>
         public override Task<HttpResponseMessage> PutAsync(string resource, CancellationToken cancellationToken = default)
         {
             return ExecuteWithTokenRefreshAsync(() =>
-                base.PutAsync(resource, cancellationToken), cancellationToken);
+                base.PutAsync(resource, cancellationToken), cancellationToken: cancellationToken);
         }
 
         /// <inheritdoc/>
         public override Task<HttpResponseMessage> PutJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
         {
             return ExecuteWithTokenRefreshAsync(() =>
-                base.PutJsonAsync(resource, jsonContent, cancellationToken), cancellationToken);
+                base.PutJsonAsync(resource, jsonContent, cancellationToken), cancellationToken: cancellationToken);
         }
 
         /// <inheritdoc/>
         public override Task<HttpResponseMessage> DeleteAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
         {
             return ExecuteWithTokenRefreshAsync(() => 
-                base.DeleteAsync(resource, queryParams, cancellationToken), cancellationToken);
+                base.DeleteAsync(resource, queryParams, cancellationToken), cancellationToken: cancellationToken);
         }
 
 
@@ -132,7 +136,7 @@ namespace Todoist.Net
         }
 
 
-        private async Task<HttpResponseMessage> ExecuteWithTokenRefreshAsync(Func<Task<HttpResponseMessage>> action, CancellationToken cancellationToken)
+        private async Task<HttpResponseMessage> ExecuteWithTokenRefreshAsync(Func<Task<HttpResponseMessage>> action, bool canRetry = true, CancellationToken cancellationToken = default)
         {
             bool tokenFoundExpired = _authContext.Tokens.ExpirationTimeUtc <= DateTime.UtcNow.AddMinutes(1);
             bool refreshTokenExist = !string.IsNullOrEmpty(_authContext.Tokens.RefreshToken);
@@ -143,7 +147,7 @@ namespace Todoist.Net
             }
 
             var response = await action().ConfigureAwait(false);
-            if (!tokenFoundExpired && refreshTokenExist && response.StatusCode == HttpStatusCode.Unauthorized)
+            if (canRetry && !tokenFoundExpired && refreshTokenExist && response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 response.Dispose();
                 return await RefreshAndExecuteAsync(action, cancellationToken).ConfigureAwait(false);

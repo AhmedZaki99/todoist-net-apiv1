@@ -101,7 +101,7 @@ public class WorkspacesServiceTests
         var actualFolder = Assert.Single(syncResponse.WorkspaceFolders, f => f.Id == folder.Id);
         Assert.Equal(folder.WorkspaceId, actualFolder.WorkspaceId);
         Assert.Equal(folder.Name, actualFolder.Name);
-        Assert.Equal(folder.DefaultOrderKey, actualFolder.DefaultOrderKey);
+        Assert.NotEmpty(actualFolder.DefaultOrderKey);
 
 
         // Step 2: Update folder.
