@@ -103,12 +103,23 @@ namespace Todoist.Net
             {
                 if (_activeRefreshTask == null)
                 {
-                    _activeRefreshTask = RefreshTokensCoreAsync(cancellationToken)
-                        .ContinueWith(t =>
+                    var refreshTask = RefreshTokensCoreAsync(cancellationToken);
+                    _activeRefreshTask = refreshTask;
+
+                    refreshTask.ContinueWith(
+                        _ =>
                         {
-                            _activeRefreshTask = null;
-                            return t.Result;
-                        }, cancellationToken);
+                            lock (_refreshLock)
+                            {
+                                if (ReferenceEquals(_activeRefreshTask, refreshTask))
+                                {
+                                    _activeRefreshTask = null;
+                                }
+                            }
+                        },
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
                 }
                 return _activeRefreshTask;
             }
