@@ -30,12 +30,13 @@ namespace Todoist.Net
         /// <inheritdoc/>
         public TodoistClient CreateClient(TodoistTokens tokens)
         {
-            if (string.IsNullOrEmpty(_options.Value?.Credentials?.ClientId) || string.IsNullOrEmpty(_options.Value?.Credentials?.ClientSecret))
+            var options = _options.Value;
+            if (string.IsNullOrEmpty(options?.Credentials?.ClientId) || string.IsNullOrEmpty(options?.Credentials?.ClientSecret))
             {
                 throw new InvalidOperationException("TodoistClientOptions must be configured properly in DI to use the CreateClient(TodoistTokens) method.");
             }
 
-            var authContext = new TodoistAuthenticationContext(_options.Value.Credentials, tokens, _options.Value.OnRefresh);
+            var authContext = new TodoistAuthenticationContext(options.Credentials, tokens, options.OnRefresh, options.DisableAutomaticRefresh);
             var httpClient = _httpClientFactory.CreateClient(ApiConstants.HttpClientName);
 
             var todoistRestClient = new RefreshableTodoistRestClient(authContext, httpClient);
@@ -45,12 +46,13 @@ namespace Todoist.Net
         /// <inheritdoc/>
         public TodoistClient CreateClient(TodoistTokens tokens, object refreshState)
         {
-            if (string.IsNullOrEmpty(_options.Value?.Credentials?.ClientId) || string.IsNullOrEmpty(_options.Value?.Credentials?.ClientSecret))
+            var options = _options.Value;
+            if (string.IsNullOrEmpty(options?.Credentials?.ClientId) || string.IsNullOrEmpty(options?.Credentials?.ClientSecret))
             {
                 throw new InvalidOperationException("TodoistClientOptions must be configured properly in DI to use the CreateClient(TodoistTokens) method.");
             }
 
-            var authContext = new TodoistAuthenticationContext(_options.Value.Credentials, tokens, _options.Value.OnRefresh, refreshState);
+            var authContext = new TodoistAuthenticationContext(options.Credentials, tokens, options.OnRefresh, refreshState, options.DisableAutomaticRefresh);
             var httpClient = _httpClientFactory.CreateClient(ApiConstants.HttpClientName);
 
             var todoistRestClient = new RefreshableTodoistRestClient(authContext, httpClient);

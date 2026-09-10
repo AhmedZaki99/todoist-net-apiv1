@@ -14,5 +14,10 @@ namespace Todoist.Net
         /// Gets or sets the callback to invoke when the tokens are refreshed.
         /// </summary>
         public TokenRefreshHandler OnRefresh { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether automatic token refresh is disabled. If set to true, the tokens will not be refreshed automatically.
+        /// </summary>
+        public bool DisableAutomaticRefresh { get; set; } = false;
     }
 }

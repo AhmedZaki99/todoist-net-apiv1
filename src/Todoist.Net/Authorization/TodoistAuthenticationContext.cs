@@ -29,14 +29,19 @@ namespace Todoist.Net
         /// </summary>
         public object RefreshState { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether automatic token refresh is disabled. If set to true, the tokens will not be refreshed automatically.
+        /// </summary>
+        public bool DisableAutomaticRefresh { get; set; }
 
-        /// <inheritdoc cref="TodoistAuthenticationContext(ClientCredentials, TodoistTokens, TokenRefreshHandler)"/>
-        public TodoistAuthenticationContext(ClientCredentials credentials, TodoistTokens tokens)
-            : this(credentials, tokens, null) { }
 
-        /// <inheritdoc cref="TodoistAuthenticationContext(ClientCredentials, TodoistTokens, TokenRefreshHandler, object)"/>
-        public TodoistAuthenticationContext(ClientCredentials credentials, TodoistTokens tokens, TokenRefreshHandler onRefresh)
-            : this(credentials, tokens, onRefresh, null) { }
+        /// <inheritdoc cref="TodoistAuthenticationContext(ClientCredentials, TodoistTokens, TokenRefreshHandler, bool)"/>
+        public TodoistAuthenticationContext(ClientCredentials credentials, TodoistTokens tokens, bool disableAutomaticRefresh = false)
+            : this(credentials, tokens, null, disableAutomaticRefresh) { }
+
+        /// <inheritdoc cref="TodoistAuthenticationContext(ClientCredentials, TodoistTokens, TokenRefreshHandler, object, bool)"/>
+        public TodoistAuthenticationContext(ClientCredentials credentials, TodoistTokens tokens, TokenRefreshHandler onRefresh, bool disableAutomaticRefresh = false)
+            : this(credentials, tokens, onRefresh, null, disableAutomaticRefresh) { }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TodoistAuthenticationContext"/> class.
@@ -45,7 +50,8 @@ namespace Todoist.Net
         /// <param name="tokens">The user tokens, including the access token and refresh token, used for authenticating with the Todoist API.</param>
         /// <param name="onRefresh">The callback to invoke when the tokens are refreshed.</param>
         /// <param name="refreshState">A state object to pass to the refresh handler.</param>
-        public TodoistAuthenticationContext(ClientCredentials credentials, TodoistTokens tokens, TokenRefreshHandler onRefresh, object refreshState)
+        /// <param name="disableAutomaticRefresh">A value indicating whether automatic token refresh is disabled. If set to true, the tokens will not be refreshed automatically.</param>
+        public TodoistAuthenticationContext(ClientCredentials credentials, TodoistTokens tokens, TokenRefreshHandler onRefresh, object refreshState, bool disableAutomaticRefresh = false)
         {
             ThrowHelper.ThrowIfNull(credentials, nameof(credentials));
             ThrowHelper.ThrowIfNull(tokens, nameof(tokens));
@@ -55,6 +61,8 @@ namespace Todoist.Net
 
             OnRefresh = onRefresh ?? new TokenRefreshHandler((res, state, ct) => Task.CompletedTask);
             RefreshState = refreshState;
+
+            DisableAutomaticRefresh = disableAutomaticRefresh;
         }
     }
 }
