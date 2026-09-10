@@ -42,6 +42,15 @@ namespace Todoist.Net
             _authContext = authContext;
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _refreshGate.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
 
         /// <inheritdoc/>
         public override Task<HttpResponseMessage> GetAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
