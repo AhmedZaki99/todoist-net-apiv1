@@ -166,15 +166,13 @@ namespace Todoist.Net
             {
                 return await action().ConfigureAwait(false);
             }
-
-            bool tokenFoundExpired = _authContext.Tokens.ExpirationTimeUtc <= DateTime.UtcNow.AddMinutes(1);
-            if (tokenFoundExpired)
+            if (_authContext.Tokens.ExpirationTimeUtc <= DateTime.UtcNow.AddMinutes(1))
             {
                 return await RefreshAndExecuteAsync(action, cancellationToken).ConfigureAwait(false);
             }
 
             var response = await action().ConfigureAwait(false);
-            if (canRetry && !tokenFoundExpired && response.StatusCode == HttpStatusCode.Unauthorized)
+            if (canRetry && response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 response.Dispose();
                 return await RefreshAndExecuteAsync(action, cancellationToken).ConfigureAwait(false);
