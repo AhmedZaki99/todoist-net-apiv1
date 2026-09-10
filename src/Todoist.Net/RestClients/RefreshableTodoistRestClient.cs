@@ -16,8 +16,8 @@ namespace Todoist.Net
 {
     internal class RefreshableTodoistRestClient : TodoistRestClient, IRefreshableTodoistRestClient
     {
-        private Task<HttpResponseMessage> _activeRefreshTask = null;
-        private readonly SemaphoreSlim _refreshGate = new SemaphoreSlim(1, 1);
+        private Task<HttpResponseMessage> _cachedRefreshTask = null;
+        private readonly object _refreshLock = new object();
 
         private readonly TodoistAuthenticationContext _authContext;
 
@@ -40,15 +40,6 @@ namespace Todoist.Net
             ThrowHelper.ThrowIfNull(authContext, nameof(authContext));
 
             _authContext = authContext;
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                _refreshGate.Dispose();
-            }
-            base.Dispose(disposing);
         }
 
 
@@ -106,36 +97,16 @@ namespace Todoist.Net
 
 
         /// <inheritdoc/>
-        public async Task<HttpResponseMessage> RefreshTokensAsync(CancellationToken cancellationToken = default)
+        public Task<HttpResponseMessage> RefreshTokensAsync(CancellationToken cancellationToken = default)
         {
-            HttpResponseMessage result;
-
-            // Gate 1: Allow only one thread at a time to await the ongoing refresh operation and, if necessary, initiate it.
-            await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
+            lock (_refreshLock)
             {
-                if (_activeRefreshTask == null)
+                if (_cachedRefreshTask?.IsCompleted ?? true)
                 {
-                    _activeRefreshTask = RefreshTokensCoreAsync(cancellationToken);
+                    _cachedRefreshTask = RefreshTokensCoreAsync(cancellationToken);
                 }
-                result = await _activeRefreshTask.ConfigureAwait(false);
             }
-            finally
-            {
-                _refreshGate.Release();
-            }
-
-            // Gate 2: Take a second turn at the end of the queue to clear the active refresh task once all threads have finished awaiting it.
-            await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                _activeRefreshTask = null;
-            }
-            finally
-            {
-                _refreshGate.Release();
-            }
-            return result;
+            return _cachedRefreshTask;
         }
 
         /// <inheritdoc/>
