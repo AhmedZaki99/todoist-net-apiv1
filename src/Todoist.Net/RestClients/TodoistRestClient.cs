@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,8 +44,6 @@ namespace Todoist.Net
             // We use the provided short-lived HttpClient instance here because it has its own lifetime management.
             AccessToken = token;
             HttpClient = httpClient;
-
-            HttpClient.BaseAddress = new Uri(ApiConstants.ApiBaseUrl);
         }
 
 
@@ -59,7 +56,7 @@ namespace Todoist.Net
 
 
         /// <inheritdoc/>
-        public async virtual Task<HttpResponseMessage> GetAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
+        public virtual async Task<HttpResponseMessage> GetAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
 
@@ -71,7 +68,7 @@ namespace Todoist.Net
         }
 
         /// <inheritdoc/>
-        public async virtual Task<HttpResponseMessage> PostAsync(string resource, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
+        public virtual async Task<HttpResponseMessage> PostAsync(string resource, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
 
@@ -85,7 +82,7 @@ namespace Todoist.Net
         }
 
         /// <inheritdoc/>
-        public async virtual Task<HttpResponseMessage> PostFilesAsync(string resource, UploadFile[] files, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
+        public virtual async Task<HttpResponseMessage> PostFilesAsync(string resource, UploadFile[] files, Dictionary<string, string> formParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
             ThrowHelper.ThrowIfNull(files, nameof(files));
@@ -102,7 +99,7 @@ namespace Todoist.Net
         }
 
         /// <inheritdoc/>
-        public async virtual Task<HttpResponseMessage> PostJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
+        public virtual async Task<HttpResponseMessage> PostJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
             ThrowHelper.ThrowIfNullOrEmpty(jsonContent, nameof(jsonContent));
@@ -117,7 +114,7 @@ namespace Todoist.Net
         }
 
         /// <inheritdoc/>
-        public async virtual Task<HttpResponseMessage> PutAsync(string resource, CancellationToken cancellationToken = default)
+        public virtual async Task<HttpResponseMessage> PutAsync(string resource, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
 
@@ -129,7 +126,7 @@ namespace Todoist.Net
         }
 
         /// <inheritdoc/>
-        public async virtual Task<HttpResponseMessage> PutJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
+        public virtual async Task<HttpResponseMessage> PutJsonAsync(string resource, string jsonContent, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
             ThrowHelper.ThrowIfNullOrEmpty(jsonContent, nameof(jsonContent));
@@ -144,7 +141,7 @@ namespace Todoist.Net
         }
 
         /// <inheritdoc/>
-        public async virtual Task<HttpResponseMessage> DeleteAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
+        public virtual async Task<HttpResponseMessage> DeleteAsync(string resource, Dictionary<string, string> queryParams = null, CancellationToken cancellationToken = default)
         {
             ThrowHelper.ThrowIfNullOrEmpty(resource, nameof(resource));
 
@@ -158,24 +155,21 @@ namespace Todoist.Net
 
         private HttpRequestMessage BuildResourceRequest(HttpMethod method, string resource, Dictionary<string, string> queryParams = null)
         {
-            var requestUri = $"{ApiConstants.ResourcesEndpoint}/{resource}{BuildQuerySegment(queryParams)}";
-
-            var request = new HttpRequestMessage(method, requestUri);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AccessToken);
-
-            return request;
+            var requestUri = BuildResourceUri(resource, queryParams);
+            return new HttpRequestMessage(method, requestUri);
         }
 
-        private static string BuildQuerySegment(Dictionary<string, string> queryParams)
+        private static string BuildResourceUri(string resource, Dictionary<string, string> queryParams = null)
         {
+            if (queryParams == null || queryParams.Count == 0)
+            {
+                return $"{ApiConstants.ResourcesEndpoint}/{resource}";
+            }
+
             string encode(string data) => string.IsNullOrEmpty(data)
                 ? string.Empty
                 : Uri.EscapeDataString(data).Replace("%20", "+");
 
-            if (queryParams == null || queryParams.Count == 0)
-            {
-                return string.Empty;
-            }
             var builder = new StringBuilder();
 
             foreach (var pair in queryParams)
@@ -188,18 +182,23 @@ namespace Todoist.Net
                 builder.Append('=');
                 builder.Append(encode(pair.Value));
             }
-            return "?" + builder.ToString();
+            return $"{ApiConstants.ResourcesEndpoint}/{resource}?{builder}";
         }
 
         private static HttpClient CreateClient(IWebProxy proxy = null)
         {
-            var handler = new HttpClientHandler();
+            var rootHandler = new HttpClientHandler();
             if (proxy != null)
             {
-                handler.Proxy = proxy;
-                handler.UseProxy = true;
+                rootHandler.Proxy = proxy;
+                rootHandler.UseProxy = true;
             }
-            return new HttpClient(handler)
+            var authHandler = new TodoistAuthMessageHandler(null)
+            {
+                InnerHandler = rootHandler
+            };
+
+            return new HttpClient(authHandler)
             {
                 BaseAddress = new Uri(ApiConstants.ApiBaseUrl)
             };

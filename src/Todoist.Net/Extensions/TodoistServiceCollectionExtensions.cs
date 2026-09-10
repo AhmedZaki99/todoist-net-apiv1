@@ -19,7 +19,12 @@ namespace Todoist.Net.Extensions
         public static IHttpClientBuilder AddTodoistClient(this IServiceCollection services)
         {
             services.AddSingleton<ITodoistClientFactory, TodoistClientFactory>();
-            return services.AddHttpClient(ApiConstants.HttpClientName);
+            return services
+                .AddHttpClient(ApiConstants.HttpClientName, client =>
+                {
+                    client.BaseAddress = new Uri(ApiConstants.ApiBaseUrl);
+                })
+                .AddHttpMessageHandler<TodoistAuthMessageHandler>();
         }
 
         /// <summary>
