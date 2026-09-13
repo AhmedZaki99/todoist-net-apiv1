@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 using Todoist.Net.Exceptions;
@@ -13,13 +14,15 @@ namespace Todoist.Net.Models
         /// Initializes a new instance of the <see cref="WorkspaceFolder"/> class.
         /// </summary>
         /// <param name="name">The name.</param>
-        /// <param name="defaultOrder">The default order.</param>
-        public WorkspaceFolder(string name, int? defaultOrder = null)
+        /// <param name="defaultOrderKey">The default order key.</param>
+        public WorkspaceFolder(string name, string defaultOrderKey = null)
         {
             ThrowHelper.ThrowIfNullOrEmpty(name, nameof(name));
 
             Name = name;
-            DefaultOrder = defaultOrder ?? -1;
+            DefaultOrderKey = defaultOrderKey;
+            AddProjectIds = new List<ComplexId>();
+            RemoveProjectIds = new List<ComplexId>();
         }
 
         [JsonConstructor]
@@ -35,18 +38,40 @@ namespace Todoist.Net.Models
         public string Name { get; set; }
 
         /// <summary>
-        /// Gets the default order.
+        /// Gets the fractional-indexing key for the workspace's shared default-ordering scope.
         /// </summary>
-        /// <value>The default order.</value>
+        /// <remarks>
+        /// When omitted, the backend generates a key placing the folder at the bottom of that scope.
+        /// If another project or folder in the workspace already uses the requested key, the backend stores an adjusted key placing the folder immediately after that position;
+        /// the corrected value is returned via sync.
+        /// </remarks>
+        /// <value>The fractional-indexing key for the workspace's shared default-ordering scope.</value>
+        [JsonPropertyName("default_order_key")]
+        public string DefaultOrderKey { get; set; }
+
+        /// <summary>
+        /// Gets the legacy integer position within the workspace's shared default-ordering scope.
+        /// </summary>
+        /// <remarks>
+        /// Superseded by <see cref="DefaultOrderKey"/>; when both are omitted the folder is placed at the bottom of the scope.
+        /// </remarks>
+        /// <value>The legacy integer position within the workspace's shared default-ordering scope.</value>
         [JsonPropertyName("default_order")]
-        public int DefaultOrder { get; set; }
+        public int? DefaultOrder { get; set; }
 
         /// <summary>
         /// Gets the child order.
         /// </summary>
         /// <value>The child order.</value>
         [JsonPropertyName("child_order")]
-        public int ChildOrder { get; internal set; }
+        public int? ChildOrder { get; internal set; }
+
+        /// <summary>
+        /// Gets a value indicating whether the folder is deleted.
+        /// </summary>
+        /// <value>Indicates whether the folder is deleted.</value>
+        [JsonPropertyName("is_deleted")]
+        public bool? IsDeleted { get; internal set; }
 
         /// <summary>
         /// Gets the workspace ID.
@@ -56,10 +81,17 @@ namespace Todoist.Net.Models
         public ComplexId WorkspaceId { get; internal set; }
 
         /// <summary>
-        /// Gets a value indicating whether the folder is deleted.
+        /// Gets the workspace project IDs to move into the folder.
         /// </summary>
-        /// <value>Indicates whether the folder is deleted.</value>
-        [JsonPropertyName("is_deleted")]
-        public bool IsDeleted { get; internal set; }
+        /// <value>The workspace project IDs to move into the folder.</value>
+        [JsonPropertyName("add_project_ids")]
+        public ICollection<ComplexId> AddProjectIds { get; set; }
+
+        /// <summary>
+        /// Gets the workspace project IDs to move out of the folder.
+        /// </summary>
+        /// <value>The workspace project IDs to move out of the folder.</value>
+        [JsonPropertyName("remove_project_ids")]
+        public ICollection<ComplexId> RemoveProjectIds { get; set; }
     }
 }
