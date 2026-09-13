@@ -84,4 +84,4 @@ dotnet test src/Todoist.Net.Tests --filter "trait!=integration-refreshable"   # 
 ## Security considerations
 
 - **Never commit tokens or secrets.** `.runsettings` is git-ignored; only `.runsettings.example` (with placeholders) is committed. Doppler tokens, OAuth client secrets, and Todoist tokens must never appear in code, test data, docs, or commit messages.
-- Integration tests mutate a real Todoist account — run them only against dedicated test accounts, and rely on `TrackForCleanup` to delete created entities.
+- Integration tests mutate a real Todoist account — they are meant to be run only against dedicated test accounts, and you must ask for permission first before running any of them individually. Running the full integration-test suite is only meant to be executed by human developers responsible for publishing before deploying new versions.

@@ -558,7 +558,7 @@ foreach (var mapping in mappings)
 
 ## Error handling
 
-Direct (non-transactional) command calls throw a `TodoistException` when the API reports a command error; transport-level and non-command API errors surface as `HttpRequestException`:
+Direct (non-transactional) command calls throw a `TodoistException` when the API reports a command error; unsuccessful responses without Todoist error details surface as `HttpRequestException`:
 
 ```csharp
 using Todoist.Net.Exceptions;
@@ -600,10 +600,6 @@ catch (OperationCanceledException)
     Console.WriteLine("Operation was cancelled");
 }
 ```
-
-## Migrating from Todoist.Net (v10 and earlier)
-
-This package is a major, breaking evolution of the original `Todoist.Net` package. The most visible renames are `Item` → `TaskInfo`/`AddTask`/`UpdateTask`, `Note` → `Comment`, `client.Items` → `client.Tasks`, and `client.Notes` → `client.Comments`. See [PR #75](https://github.com/olsh/todoist-net/pull/75) and [Issue #70](https://github.com/olsh/todoist-net/issues/70) on the original [olsh/todoist-net](https://github.com/olsh/todoist-net) repository for the full breaking-changes summary and the migration phases.
 
 ## Contributing
 
